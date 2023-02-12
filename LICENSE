@@ -1,6 +1,11 @@
 BSD 3-Clause License
 
-Copyright (c) 2023, Tony Rippy
+The original C library:
+Copyright (c) 2007, Fu Limin (phoolimin@gmail.com).
+All rights reserved.
+
+Rust port:
+Copyright (c) 2023, Tony Rippy (tonyrippy@gmail.com).
 
 Redistribution and use in source and binary forms, with or without
 modification, are permitted provided that the following conditions are met:
