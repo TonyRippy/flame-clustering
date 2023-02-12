@@ -42,14 +42,14 @@
 //!
 //! ```
 //! # extern crate flame_clustering;
-//! use flame_clustering::Flame;
+//! use flame_clustering::DistanceMatrix;
 //!
 //! # fn main() {
 //! let data: Vec<f64> = vec![0.12, 0.23, 0.15, 0.19, 100.0];
-//! let mut flame = Flame::new(&data, |a, b| (a - b) * (a - b));
-//! flame.define_supports(2, -2.0);
-//! flame.local_approximation(100, 1e-6);
-//! let (clusters, outliers) = flame.make_clusters(-1.0);
+//! let (clusters, outliers) = DistanceMatrix::build(&data, |a, b| (a - b) * (a - b))
+//!     .find_supporting_objects(2, -2.0)
+//!     .approximate_fuzzy_memberships(100, 1e-6)
+//!     .make_clusters(-1.0);
 //!
 //! assert_eq!(format!("{clusters:?}"), "[[0, 3, 1, 2, 4]]");
 //! assert_eq!(format!("{outliers:?}"), "[]");
@@ -114,6 +114,7 @@ enum ObjectType {
     Outlier,
 }
 
+/*
 pub struct Flame {
     /// Number of objects
     n: usize,
@@ -144,11 +145,45 @@ pub struct Flame {
 
     pub fuzzyships: Vec<Vec<f64>>,
 }
+ */
 
-impl Flame {
+#[derive(Debug)]
+pub struct DistanceMatrix {
+    /// Number of objects
+    n: usize,
+
+    /// Upper bound for K defined as: sqrt(N)+10
+    kmax: usize,
+
+    /// Stores the kmax nearest neighbors instead of K nearest neighbors
+    /// for each objects, so that when K is changed, weights and CSOs can be
+    /// re-computed without referring to the original data.
+    neighbors: Vec<Vec<usize>>,
+
+    /// Distances to the KMAX nearest neighbors.
+    distances: Vec<Vec<f64>>,
+}
+
+pub struct WithSupportingObjects<'a> {
+    matrix: &'a DistanceMatrix,
+
+    /// Nearest neighbor count.
+    /// it can be different from K if an object has nearest neighbors with
+    /// equal distance.
+    nncounts: Vec<usize>,
+    weights: Vec<Vec<f64>>,
+
+    /// Number of identified Cluster Supporting Objects
+    pub cso_count: usize,
+
+    /// The classification of objects.
+    obtypes: Vec<ObjectType>,
+}
+
+impl DistanceMatrix {
     /// Start a new instance of the FLAME clustering algortim,
     /// given a set of objects and a distance function.
-    pub fn new<'a, V, F>(data: &'a [V], distfunc: F) -> Flame
+    pub fn build<'a, V, F>(data: &'a [V], distfunc: F) -> DistanceMatrix
     where
         F: Fn(&'a V, &'a V) -> f64,
     {
@@ -157,20 +192,8 @@ impl Flame {
         if kmax >= n {
             kmax = n - 1;
         }
-
-        let mut flame = Flame {
-            n,
-            k: 0,
-            kmax,
-            graph: Vec::with_capacity(n),
-            dists: Vec::with_capacity(n),
-            nncounts: vec![0; n],
-            weights: Vec::with_capacity(n),
-            cso_count: 0,
-            obtypes: vec![ObjectType::Normal; n],
-            fuzzyships: Vec::with_capacity(n),
-        };
-
+        let mut neighbors = Vec::<Vec<usize>>::with_capacity(n);
+        let mut distances = Vec::<Vec<f64>>::with_capacity(n);
         let mut vals = Vec::with_capacity(n - 1);
         for i in 0..n {
             // Store MAX number of nearest neighbors.
@@ -191,11 +214,15 @@ impl Flame {
                 indexes.push(x.index);
                 values.push(x.value);
             }
-            flame.graph.push(indexes);
-            flame.dists.push(values);
-            flame.weights.push(vec![0.0; kmax]);
+            neighbors.push(indexes);
+            distances.push(values);
         }
-        flame
+        DistanceMatrix {
+            n,
+            kmax,
+            neighbors,
+            distances,
+        }
     }
 
     /// Define knn-nearest neighbors for each object
@@ -208,26 +235,21 @@ impl Flame {
     /// for each object. Objects with local maximum density are defined as
     /// CSOs. The initial outliers are defined as objects with local minimum
     /// density which is less than mean( density ) + thd * stdev( density );
-    pub fn define_supports(&mut self, mut knn: usize, mut thd: f64) {
-        let mut density = vec![0.0; self.n];
-
+    pub fn find_supporting_objects(&self, mut knn: usize, mut thd: f64) -> WithSupportingObjects {
         if knn > self.kmax {
             knn = self.kmax;
         }
-        self.k = knn;
+        let mut nncounts = Vec::<usize>::with_capacity(self.n);
+        let mut weights = Vec::<Vec<f64>>::with_capacity(self.n);
+        let mut density = Vec::<f64>::with_capacity(self.n);
         for i in 0..self.n {
+            let dists = &self.distances[i];
             /* To include all the neighbors that have distances equal to the
              * distance of the most distant one of the K-Nearest Neighbors */
             let mut k = knn;
-            let d = self.dists[i][knn - 1];
-            for j in knn..self.kmax {
-                if self.dists[i][j] == d {
-                    k += 1;
-                } else {
-                    break;
-                }
-            }
-            self.nncounts[i] = k;
+            let d = dists[knn - 1];
+            k += dists[knn..self.kmax].iter().filter(|&x| *x == d).count();
+            nncounts.push(k);
 
             // The definition of weights in this implementation is
             // different from the previous implementations where distances
@@ -237,14 +259,10 @@ impl Flame {
             // the ranking of distances of the neighbors, so it is more
             // robust against distance transformations.
             let mut sum = ((k * (k + 1)) / 2) as f64;
-            for j in 0..k {
-                self.weights[i][j] = (k - j) as f64 / sum;
-            }
-            sum = 0.0;
-            for j in 0..k {
-                sum += self.dists[i][j];
-            }
-            density[i] = 1.0 / (sum + EPSILON);
+            weights.push((0..k).map(|j| (k - j) as f64 / sum).collect());
+
+            sum = dists.iter().take(k).sum();
+            density.push((sum + EPSILON).recip());
         }
         let mut sum = 0.0;
         let mut sum2 = 0.0;
@@ -257,14 +275,14 @@ impl Flame {
         // Density threshold for possible outliers.
         thd = sum + thd * (sum2 / (self.n as f64) - sum * sum).sqrt();
 
-        self.obtypes = vec![ObjectType::Normal; self.n];
-        self.cso_count = 0;
+        let mut obtypes = vec![ObjectType::Normal; self.n];
+        let mut cso_count = 0;
         for i in 0..self.n {
-            let k = self.nncounts[i];
+            let k = nncounts[i];
             let mut fmax = 0.0;
-            let mut fmin = density[i] / density[self.graph[i][0]];
+            let mut fmin = density[i] / density[self.neighbors[i][0]];
             for j in 1..k {
-                let d = density[i] / density[self.graph[i][j]];
+                let d = density[i] / density[self.neighbors[i][j]];
                 if d > fmax {
                     fmax = d;
                 }
@@ -273,28 +291,39 @@ impl Flame {
                 }
                 // To avoid defining neighboring objects or objects close
                 // to an outlier as CSOs.
-                if self.obtypes[self.graph[i][j]] != ObjectType::Normal {
+                if obtypes[self.neighbors[i][j]] != ObjectType::Normal {
                     fmin = 0.0;
                 }
             }
             if fmin >= 1.0 {
-                self.cso_count += 1;
-                self.obtypes[i] = ObjectType::Support;
+                cso_count += 1;
+                obtypes[i] = ObjectType::Support;
             } else if fmax <= 1.0 && density[i] < thd {
-                self.obtypes[i] = ObjectType::Outlier;
+                obtypes[i] = ObjectType::Outlier;
             }
         }
+        WithSupportingObjects {
+            matrix: self,
+            nncounts,
+            weights,
+            cso_count,
+            obtypes,
+        }
     }
+}
 
+impl<'a> WithSupportingObjects<'a> {
     /// Local Approximation of fuzzy memberships.
     /// Stopped after the maximum steps of iterations;
     /// Or stopped when the overall membership difference between
     /// two iterations become less than epsilon.
-    pub fn local_approximation(&mut self, steps: usize, epsilon: f64) {
+    pub fn approximate_fuzzy_memberships(self, steps: usize, epsilon: f64) -> FuzzyMemberships {
+        let n = self.matrix.n;
         let m = self.cso_count;
 
+        let mut fuzzyships = Vec::<Vec<f64>>::with_capacity(n);
         let mut k = 0;
-        for i in 0..self.n {
+        for i in 0..n {
             let mut fuzzy: Vec<f64>;
             match self.obtypes[i] {
                 ObjectType::Support => {
@@ -315,25 +344,25 @@ impl Flame {
                     fuzzy = vec![frac; m + 1];
                 }
             }
-            self.fuzzyships.push(fuzzy);
+            fuzzyships.push(fuzzy);
         }
-        let mut fuzzyships2 = self.fuzzyships.clone();
+        let mut fuzzyships2 = fuzzyships.clone();
 
         let mut dev: f64;
         let mut even = true;
         for _ in 0..steps {
             dev = 0.0;
-            for i in 0..self.n {
+            for i in 0..n {
                 if self.obtypes[i] != ObjectType::Normal {
                     continue;
                 }
                 let knn = self.nncounts[i];
-                let ids = &self.graph[i];
+                let ids = &self.matrix.neighbors[i];
                 let wt = &self.weights[i];
                 let (fuzzy, fuzzy2) = if even {
-                    (&mut self.fuzzyships[i], &fuzzyships2)
+                    (&mut fuzzyships[i], &fuzzyships2)
                 } else {
-                    (&mut fuzzyships2[i], &self.fuzzyships)
+                    (&mut fuzzyships2[i], &fuzzyships)
                 };
                 let mut sum: f64 = 0.0;
                 // Update membership of an object by a linear combination of
@@ -358,22 +387,37 @@ impl Flame {
         }
         // update the membership of all objects to remove clusters
         // that contains only the CSO.
-        for i in 0..self.n {
+        for i in 0..n {
             let knn = self.nncounts[i];
-            let ids = &self.graph[i];
+            let ids = &self.matrix.neighbors[i];
             let wt = &self.weights[i];
-            let fuzzy = &mut self.fuzzyships[i];
+            let fuzzy = &mut fuzzyships[i];
             let fuzzy2 = &fuzzyships2;
             for j in 0..=m {
-                fuzzy[j] = 0.0;
-                for k in 0..knn {
-                    fuzzy[j] += wt[k] * fuzzy2[ids[k]][j];
-                }
+                fuzzy[j] = (0..knn).map(|k| wt[k] * fuzzy2[ids[k]][j]).sum();
                 //dev += (fuzzy[j] - fuzzy2[i][j]) * (fuzzy[j] - fuzzy2[i][j]);
             }
         }
+        FuzzyMemberships {
+            n,
+            cso_count: self.cso_count,
+            fuzzyships,
+        }
     }
+}
 
+#[derive(Debug)]
+pub struct FuzzyMemberships {
+    /// Number of objects
+    n: usize,
+
+    /// Number of identified Cluster Supporting Objects
+    cso_count: usize,
+
+    fuzzyships: Vec<Vec<f64>>,
+}
+
+impl FuzzyMemberships {
     /// Construct clusters.
     /// If 0<thd<1:
     ///   each object is assigned to all clusters in which
