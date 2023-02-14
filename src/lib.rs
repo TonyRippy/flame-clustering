@@ -58,6 +58,9 @@
 
 pub mod distance;
 
+#[macro_use]
+extern crate derivative;
+
 /// Data for clustering are usually noisy, so it is not very necessary
 /// to have EPSILON extremely small.
 const EPSILON: f64 = 1e-9;
@@ -297,7 +300,8 @@ impl DistanceGraph {
     }
 }
 
-#[derive(Debug)]
+#[derive(Derivative)]
+#[derivative(Debug)]
 pub struct ClusterSupportingObjects<'a> {
     graph: &'a DistanceGraph,
 
@@ -313,7 +317,11 @@ pub struct ClusterSupportingObjects<'a> {
     /// The classification of objects.
     obtypes: Vec<ObjectType>,
 
+    /// The fuzzy measure of how likely it is that an object is a member
+    /// of a cluster, iteratively computed.
     fuzzyships: Vec<Vec<f64>>,
+
+    #[derivative(Debug = "ignore")]
     fuzzyships2: Vec<Vec<f64>>,
 }
 
