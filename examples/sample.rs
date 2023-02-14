@@ -5,7 +5,7 @@
 
 extern crate flame_clustering;
 
-use flame_clustering::{distance, DistanceMatrix};
+use flame_clustering::{distance, DistanceGraph};
 use std::env;
 use std::fs::File;
 use std::io::{self, Write};
@@ -59,16 +59,18 @@ fn main() -> io::Result<()> {
         exit(1);
     }
     let data = read_data(io::BufReader::new(File::open(filename.unwrap())?))?;
-    let flame = DistanceMatrix::build(&data, distance::euclidean);
+    let flame = DistanceGraph::build(&data, distance::euclidean);
 
     print!("Detecting Cluster Supporting Objects ...");
     io::stdout().flush()?;
     let supports = flame.find_supporting_objects(10, -2.0);
-    println!("done, found {}", supports.cso_count);
+    println!("done, found {}", supports.count());
 
     print!("Propagating fuzzy memberships ... ");
     io::stdout().flush()?;
-    let fuzzyships = supports.approximate_fuzzy_memberships(500, 1e-6);
+    let fuzzyships = supports
+        .approximate_fuzzy_memberships(500, 1e-6)
+        .assign_outliers();
     println!("done");
 
     print!("Defining clusters from fuzzy memberships ... ");
