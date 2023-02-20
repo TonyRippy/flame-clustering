@@ -111,9 +111,12 @@ fn partial_quicksort(data: &mut [IndexFloat], first: usize, last: usize, part: u
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-enum ObjectType {
+pub enum ObjectType {
+    /// An object that will be assigned to a cluster.
     Normal,
+    /// A cluster supporting object.
     Support,
+    /// An object that is too distant to (initially) be considered part of a cluster.
     Outlier,
 }
 
@@ -329,6 +332,11 @@ impl<'a> ClusterSupportingObjects<'a> {
     /// Returns the number of cluster supporting objects.
     pub fn count(&self) -> usize {
         self.cso_count
+    }
+
+    /// Identifies how an object was classified by the algorithm.
+    pub fn object_type(&self, id: usize) -> ObjectType {
+        self.obtypes[id]
     }
 
     /// Local Approximation of fuzzy memberships.
