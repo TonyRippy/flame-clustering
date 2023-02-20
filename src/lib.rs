@@ -182,6 +182,15 @@ impl DistanceGraph {
         }
     }
 
+    /// Returns the neighbors of an object, represented as (id, distance) tuples,
+    /// sorted in order from closest to furthest away.
+    pub fn neighbors(&self, id: usize) -> impl Iterator<Item = (usize, f64)> + '_ {
+        self.neighbors[id]
+            .iter()
+            .copied()
+            .zip(self.distances[id].iter().copied())
+    }
+
     /// Define knn-nearest neighbors for each object
     /// and the Cluster Supporting Objects (CSO).
     ///
@@ -200,7 +209,7 @@ impl DistanceGraph {
         if knn > self.kmax {
             knn = self.kmax;
         }
-        let mut nncounts = Vec::<usize>::with_capacity(self.n);
+        let mut neighbors = Vec::<Vec<usize>>::with_capacity(self.n);
         let mut weights = Vec::<Vec<f64>>::with_capacity(self.n);
         let mut density = Vec::<f64>::with_capacity(self.n);
         for i in 0..self.n {
@@ -210,7 +219,7 @@ impl DistanceGraph {
             let mut k = knn;
             let d = dists[knn - 1];
             k += dists[knn..self.kmax].iter().filter(|&x| *x == d).count();
-            nncounts.push(k);
+            neighbors.push(self.neighbors[i].iter().take(k).copied().collect());
 
             // The definition of weights in this implementation is
             // different from the previous implementations where distances
@@ -239,7 +248,7 @@ impl DistanceGraph {
         let mut obtypes = vec![ObjectType::Normal; self.n];
         let mut cso_count = 0;
         for i in 0..self.n {
-            let k = nncounts[i];
+            let k = neighbors[i].len();
             let mut fmax = 0.0;
             let mut fmin = density[i] / density[self.neighbors[i][0]];
             for j in 1..k {
@@ -292,8 +301,7 @@ impl DistanceGraph {
         let fuzzyships2 = fuzzyships.clone();
 
         ClusterSupportingObjects {
-            graph: self,
-            nncounts,
+            neighbors,
             weights,
             cso_count,
             obtypes,
@@ -305,13 +313,10 @@ impl DistanceGraph {
 
 #[derive(Derivative)]
 #[derivative(Debug)]
-pub struct ClusterSupportingObjects<'a> {
-    graph: &'a DistanceGraph,
+pub struct ClusterSupportingObjects {
+    /// Nearest neighbors for each object.
+    neighbors: Vec<Vec<usize>>,
 
-    /// Nearest neighbor count.
-    /// it can be different from K if an object has nearest neighbors with
-    /// equal distance.
-    nncounts: Vec<usize>,
     weights: Vec<Vec<f64>>,
 
     /// Number of identified Cluster Supporting Objects
@@ -328,7 +333,7 @@ pub struct ClusterSupportingObjects<'a> {
     fuzzyships2: Vec<Vec<f64>>,
 }
 
-impl<'a> ClusterSupportingObjects<'a> {
+impl ClusterSupportingObjects {
     /// Returns the number of cluster supporting objects.
     pub fn count(&self) -> usize {
         self.cso_count
@@ -370,14 +375,17 @@ impl<'a> ClusterSupportingObjects<'a> {
             if self.obtypes[i] != obtype {
                 continue;
             }
-            let knn = self.nncounts[i];
-            let ids = &self.graph.neighbors[i];
+            let ids = &self.neighbors[i];
             let wt = &self.weights[i];
             let mut sum = 0.0;
             // Update membership of an object by a linear combination of
             // the memberships of its nearest neighbors.
             for (j, fv) in fuzzy.iter_mut().enumerate() {
-                let value = (0..knn).map(|k| wt[k] * fuzzy2[ids[k]][j]).sum();
+                let value = ids
+                    .iter()
+                    .enumerate()
+                    .map(|(k, &id)| wt[k] * fuzzy2[id][j])
+                    .sum();
                 *fv = value;
                 sum += value;
                 let d = value - fuzzy2[i][j];
