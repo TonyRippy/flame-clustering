@@ -142,7 +142,7 @@ impl DistanceGraph {
     /// given a set of objects and a distance function.
     pub fn build<'a, V, F>(data: &'a [V], distfunc: F) -> DistanceGraph
     where
-        F: Fn(&'a V, &'a V) -> f64,
+        F: Fn(&V, &V) -> f64,
     {
         let n = data.len();
         let mut kmax: usize = (n as f64).sqrt() as usize + 10;

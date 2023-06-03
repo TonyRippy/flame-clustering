@@ -50,7 +50,7 @@ use num_traits::{Float, FromPrimitive, Zero};
 /// The distance between two points on a coordinate plane.
 ///
 /// See: <https://en.wikipedia.org/wiki/Euclidean_distance>
-pub fn euclidean<F, V>(x: V, y: V) -> F
+pub fn euclidean<F, V>(x: &V, y: &V) -> F
 where
     F: Float,
     V: AsRef<[F]>,
@@ -69,7 +69,7 @@ where
 /// absolute differences of their Cartesian coordinates.
 ///
 /// See: <https://en.wikipedia.org/wiki/Taxicab_geometry>
-pub fn manhattan<F, V>(x: V, y: V) -> F
+pub fn manhattan<F, V>(x: &V, y: &V) -> F
 where
     F: Copy + Signed + Sub + Zero,
     V: AsRef<[F]>,
@@ -84,7 +84,7 @@ where
 /// dot product of the vectors divided by the product of their lengths.
 ///
 /// See: <https://en.wikipedia.org/wiki/Cosine_similarity>
-pub fn cosine<F, V>(x: V, y: V) -> F
+pub fn cosine<F, V>(x: &V, y: &V) -> F
 where
     F: Float + FromPrimitive,
     V: AsRef<[F]>,
@@ -125,7 +125,7 @@ where
 /// Pearson correlation.
 ///
 /// See: <https://en.wikipedia.org/wiki/Pearson_correlation_coefficient>
-pub fn pearson<F, V>(x: V, y: V) -> F
+pub fn pearson<F, V>(x: &V, y: &V) -> F
 where
     F: Float + FromPrimitive,
     V: AsRef<[F]>,
@@ -151,7 +151,7 @@ where
     r / ((x2 * y2).sqrt() + F::from_f64(crate::EPSILON).unwrap())
 }
 
-pub fn uc_pearson<F, V>(x: V, y: V) -> F
+pub fn uc_pearson<F, V>(x: &V, y: &V) -> F
 where
     F: Float + FromPrimitive,
     V: AsRef<[F]>,
@@ -178,7 +178,7 @@ where
     r / ((x2 * y2).sqrt() + F::from_f64(crate::EPSILON).unwrap())
 }
 
-pub fn sq_pearson<F, V>(x: V, y: V) -> F
+pub fn sq_pearson<F, V>(x: &V, y: &V) -> F
 where
     F: Float + FromPrimitive,
     V: AsRef<[F]>,
@@ -207,7 +207,7 @@ where
 /// A measure of distance between two samples, calculated using their covariance.
 ///
 /// See: <https://en.wikipedia.org/wiki/Covariance>
-pub fn covariance<F, V>(x: V, y: V) -> F
+pub fn covariance<F, V>(x: &V, y: &V) -> F
 where
     F: Float + FromPrimitive,
     V: AsRef<[F]>,
