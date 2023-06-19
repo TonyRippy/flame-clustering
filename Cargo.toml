@@ -1,6 +1,6 @@
 [package]
 name = "flame-clustering"
-version = "0.2.1"
+version = "0.2.2"
 authors = ["Tony Rippy <tonyrippy@gmail.com>"]
 license = "BSD-3-Clause"
 edition = "2021"
