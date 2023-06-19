@@ -145,6 +145,25 @@ impl DistanceGraph {
         F: Fn(&V, &V) -> f64,
     {
         let n = data.len();
+        match n {
+            0 => {
+                return DistanceGraph {
+                    n: 0,
+                    kmax: 0,
+                    neighbors: vec![],
+                    distances: vec![],
+                };
+            }
+            1 => {
+                return DistanceGraph {
+                    n: 1,
+                    kmax: 0,
+                    neighbors: vec![vec![]],
+                    distances: vec![vec![]],
+                };
+            }
+            _ => {}
+        }
         let mut kmax: usize = (n as f64).sqrt() as usize + 10;
         if kmax >= n {
             kmax = n - 1;
@@ -206,6 +225,29 @@ impl DistanceGraph {
         mut knn: usize,
         mut thd: f64,
     ) -> ClusterSupportingObjects {
+        match self.n {
+            0 => {
+                return ClusterSupportingObjects {
+                    neighbors: vec![],
+                    weights: vec![],
+                    cso_count: 0,
+                    obtypes: vec![],
+                    fuzzyships: vec![],
+                    fuzzyships2: vec![],
+                };
+            }
+            1 => {
+                return ClusterSupportingObjects {
+                    neighbors: vec![vec![]],
+                    weights: vec![vec![]],
+                    cso_count: 1,
+                    obtypes: vec![ObjectType::Support],
+                    fuzzyships: vec![vec![1.0]],
+                    fuzzyships2: vec![vec![1.0]],
+                };
+            }
+            _ => {}
+        }
         if knn > self.kmax {
             knn = self.kmax;
         }
@@ -545,5 +587,27 @@ mod tests {
                 v[i + 1].value
             );
         }
+    }
+
+    #[test]
+    fn zero_objects() {
+        let data: Vec<f64> = vec![];
+        let (clusters, outliers) = DistanceGraph::build(&data, |a, b| (a - b).abs())
+            .find_supporting_objects(3, -1.0)
+            .approximate_fuzzy_memberships(2, 1e-6)
+            .make_clusters(-1.0);
+        assert!(clusters.is_empty());
+        assert!(outliers.is_empty());
+    }
+
+    #[test]
+    fn one_object() {
+        let data: Vec<f64> = vec![0.0];
+        let (clusters, outliers) = DistanceGraph::build(&data, |a, b| (a - b).abs())
+            .find_supporting_objects(3, -1.0)
+            .approximate_fuzzy_memberships(2, 1e-6)
+            .make_clusters(-1.0);
+        assert_eq!(clusters.as_slice(), &[[0]]);
+        assert!(outliers.is_empty());
     }
 }
